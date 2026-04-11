@@ -1,57 +1,114 @@
-/* I2S microphone read demo
- * Pins: WS=GPIO26  SCK=GPIO25  SD=GPIO33
- * Reads 256 samples at 16 kHz and prints them to Serial.
- */
 #include <Arduino.h>
-#include "AudioProcessor.h"
+#include "Config.h"
+#include "SoundClassifier.h"
+#include "AudioAnalyzer.h"
+#include "LEDStrip.h"
+#include "DisplayManager.h"
+#include "BlynkManager.h"
 
-#define PRINT_N_SAMPLES 32 /* how many raw values to print per read */
+// Global instances
+SoundClassifier g_classifier;
+AudioAnalyzer g_audioAnalyzer;
+LEDStrip g_ledStrip;
+DisplayManager g_display;
+BlynkManager g_blynkManager;
 
-static int16_t buf[AUDIO_FFT_SAMPLES];
+// Timing variables
+unsigned long lastUpdate = 0;
+const unsigned long UPDATE_INTERVAL = 50;  // 20Hz update rate
 
-void setup()
-{
+// Forward declarations
+void setupHardware();
+void updateDisplay();
+
+// ============================================
+// SETUP
+// ============================================
+void setup() {
     Serial.begin(115200);
-    while (!Serial)
-    { /* wait for USB-Serial on some boards */
+    Serial.println("\n==========================================");
+    Serial.println("Sound Classifier System Starting...");
+    Serial.println("==========================================");
+    
+    setupHardware();
+    
+    // Initialize all modules
+    g_audioAnalyzer.begin();
+    g_ledStrip.begin();
+    g_display.begin();
+    g_classifier.begin();
+    
+    // Connect to Blynk (WiFi connection happens here)
+    if (g_blynkManager.begin()) {
+        Serial.println("Blynk connected successfully!");
+    } else {
+        Serial.println("Warning: Blynk connection failed - running offline");
     }
-    Serial.println("=== I2S Mic Demo ===");
-    Serial.printf("Sample rate : %d Hz\n", AUDIO_SAMPLE_RATE);
-    Serial.printf("Buffer size : %d samples\n", AUDIO_FFT_SAMPLES);
-    Serial.println("WS=GPIO26  SCK=GPIO25  SD=GPIO33");
-    Serial.println("--------------------");
-
-    audio_init();
-    Serial.println("I2S driver installed. Listening...\n");
+    
+    Serial.println("==========================================");
+    Serial.println("System Ready!");
+    Serial.println("Monitoring for smoke alarms and doorbells...");
+    Serial.println("==========================================\n");
 }
 
-void loop()
-{
-    int n = audio_read_samples(buf, AUDIO_FFT_SAMPLES);
+void setupHardware() {
+    // Initialize relay pins
+    pinMode(RELAY_SMOKE, OUTPUT);
+    pinMode(RELAY_DOORBELL, OUTPUT);
+    digitalWrite(RELAY_SMOKE, LOW);
+    digitalWrite(RELAY_DOORBELL, LOW);
+    
+    Serial.println("Hardware initialized:");
+    Serial.printf("  - LED Strip: GPIO %d (%d LEDs)\n", LED_DATA_PIN, NUM_LEDS);
+    Serial.printf("  - Relays: Smoke=%d, Doorbell=%d\n", RELAY_SMOKE, RELAY_DOORBELL);
+    Serial.printf("  - I2S Mic: WS=%d, SCK=%d, SD=%d\n", I2S_WS, I2S_SCK, I2S_SD);
+}
 
-    if (n <= 0)
-    {
-        Serial.println("[WARN] No samples read");
-        return;
+// ============================================
+// MAIN LOOP
+// ============================================
+void loop() {
+    // Run Blynk (handles WiFi and virtual pins)
+    g_blynkManager.run();
+    
+    // Update LED strip animations
+    g_ledStrip.update();
+    
+    // Update sound classification
+    g_classifier.update();
+    
+    // Get current alert state
+    AlertType currentAlert = g_classifier.getCurrentAlert();
+    
+    // Trigger LED strip if new alert
+    static AlertType lastAlert = ALERT_NONE;
+    if (currentAlert != lastAlert && currentAlert != ALERT_NONE) {
+        g_ledStrip.triggerAlert(currentAlert);
+        lastAlert = currentAlert;
+    } else if (currentAlert == ALERT_NONE) {
+        lastAlert = ALERT_NONE;
     }
-
-    /* Compute RMS */
-    int64_t sum_sq = 0;
-    for (int i = 0; i < n; i++)
-    {
-        int32_t s = buf[i];
-        sum_sq += s * s;
+    
+    // Update display at regular intervals
+    if (millis() - lastUpdate >= UPDATE_INTERVAL) {
+        updateDisplay();
+        lastUpdate = millis();
     }
-    int rms = (int)sqrt((double)(sum_sq / n));
+    
+    // Small delay for stability
+    delay(10);
+}
 
-    /* Print RMS */
-    Serial.printf("--- n=%d  RMS=%d ---\n", n, rms);
-
-    /* Print first PRINT_N_SAMPLES raw values */
-    int print_n = (n < PRINT_N_SAMPLES) ? n : PRINT_N_SAMPLES;
-    for (int i = 0; i < print_n; i++)
-    {
-        Serial.printf("  [%3d] %6d\n", i, (int)buf[i]);
+void updateDisplay() {
+    // Get current alert
+    AlertType alert = g_classifier.getCurrentAlert();
+    
+    // Get spectrum data (only if no alert showing)
+    float* spectrum = nullptr;
+    if (alert == ALERT_NONE) {
+        spectrum = g_audioAnalyzer.getSpectrum();
     }
-    Serial.println();
+    
+    // Update the display
+    g_display.update(alert, spectrum);
 }
