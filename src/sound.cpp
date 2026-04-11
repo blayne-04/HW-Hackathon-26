@@ -18,8 +18,12 @@
 char ssid[] = "YourWiFiSSID";
 char pass[] = "YourWiFiPassword";
 
-#define VIRTUAL_PIN_NOTIFICATION V1
-#define VIRTUAL_PIN_MUTE V2
+// ===== BLYNK VIRTUAL PINS =====
+#define VIRTUAL_PIN_NOTIFICATION V1  // Full alert text for notifications
+#define VIRTUAL_PIN_MUTE V2          // Mute control
+#define VIRTUAL_PIN_LED_TEXT V3      // NEW: Short LED text for display widget
+#define VIRTUAL_PIN_ALERT_STATE V4   // NEW: Numeric alert state (0=none,1=smoke,2=doorbell)
+#define VIRTUAL_PIN_STATUS V5        // NEW: System status
 
 // ===== DISPLAY =====
 TFT_eSPI tft = TFT_eSPI();
@@ -80,14 +84,16 @@ const unsigned long COOLDOWN_MS = 8000;
 // ===== REMOTE MUTE =====
 bool alertsMuted = false;
 
-// ===== ALERT STATE MACHINE =====
+// ===== ENHANCED ALERT STATE MACHINE =====
 enum AlertState
 {
-    ALERT_NONE,
-    ALERT_SMOKE,
-    ALERT_DOORBELL
+    ALERT_NONE = 0,
+    ALERT_SMOKE = 1,
+    ALERT_DOORBELL = 2
 };
+
 AlertState currentAlert = ALERT_NONE;
+AlertState lastAlert = ALERT_NONE;
 unsigned long alertStartTime = 0;
 int alertStep = 0;
 unsigned long alertLastUpdate = 0;
@@ -98,6 +104,9 @@ bool showingAlertText = false;
 String currentAlertText = "";
 uint16_t currentAlertColor = TFT_WHITE;
 
+// Blynk heartbeat
+unsigned long lastBlynkSend = 0;
+
 // ===== FUNCTION PROTOTYPES =====
 void triggerSmokeAlert();
 void triggerDoorbellAlert();
@@ -105,13 +114,20 @@ void updateAlert();
 void showLoudnessBar();
 void drawSpectrum();
 void updateDisplayAlert();
+void sendAlertToBlynk(AlertState state, String fullText);
+String getLEDTextFromState(AlertState state);
+String getFullAlertTextFromState(AlertState state);
 
-// ===== BLYNK HANDLER =====
+// ===== BLYNK HANDLER FOR MUTE =====
 BLYNK_WRITE(VIRTUAL_PIN_MUTE)
 {
     alertsMuted = param.asInt();
     Serial.print("Remote mute: ");
     Serial.println(alertsMuted ? "ON" : "OFF");
+    
+    // Update status on Blynk
+    Blynk.virtualWrite(VIRTUAL_PIN_STATUS, alertsMuted ? "MUTED" : "ACTIVE");
+    
     if (alertsMuted)
     {
         fill_solid(leds, NUM_LEDS, CRGB::DarkBlue);
@@ -121,11 +137,74 @@ BLYNK_WRITE(VIRTUAL_PIN_MUTE)
         tft.setTextColor(TFT_WHITE);
         tft.setCursor(50, 100);
         tft.println("MUTED");
+        
+        // Send muted state to LED text widget
+        Blynk.virtualWrite(VIRTUAL_PIN_LED_TEXT, "MUTED");
+        Blynk.virtualWrite(VIRTUAL_PIN_ALERT_STATE, -1); // Special code for muted
     }
     else
     {
         tft.fillScreen(TFT_BLACK);
+        Blynk.virtualWrite(VIRTUAL_PIN_LED_TEXT, "ACTIVE");
+        Blynk.virtualWrite(VIRTUAL_PIN_ALERT_STATE, 0);
     }
+}
+
+// ===== HELPER FUNCTIONS FOR ALERT TEXT =====
+String getFullAlertTextFromState(AlertState state)
+{
+    switch(state)
+    {
+        case ALERT_SMOKE:
+            return "SMOKE ALARM DETECTED";
+        case ALERT_DOORBELL:
+            return "DOORBELL PRESSED";
+        case ALERT_NONE:
+        default:
+            return "NONE";
+    }
+}
+
+String getLEDTextFromState(AlertState state)
+{
+    switch(state)
+    {
+        case ALERT_SMOKE:
+            return "SMOKE!";
+        case ALERT_DOORBELL:
+            return "DOOR!";
+        case ALERT_NONE:
+        default:
+            return "OK";
+    }
+}
+
+void sendAlertToBlynk(AlertState state, String fullText)
+{
+    // Send full text to notification pin
+    Blynk.virtualWrite(VIRTUAL_PIN_NOTIFICATION, fullText);
+    
+    // Send short LED text (V3) - perfect for Labeled Value widget
+    String ledText = getLEDTextFromState(state);
+    Blynk.virtualWrite(VIRTUAL_PIN_LED_TEXT, ledText);
+    
+    // Send numeric state (V4) - for color mapping and gauges
+    Blynk.virtualWrite(VIRTUAL_PIN_ALERT_STATE, (int)state);
+    
+    // Send status (V5)
+    String statusText;
+    if (alertsMuted)
+        statusText = "MUTED";
+    else if (state != ALERT_NONE)
+        statusText = "ALERT ACTIVE";
+    else
+        statusText = "MONITORING";
+    Blynk.virtualWrite(VIRTUAL_PIN_STATUS, statusText);
+    
+    Serial.print("Blynk Update - LED Text: ");
+    Serial.print(ledText);
+    Serial.print(" | State: ");
+    Serial.println((int)state);
 }
 
 // ===== SETUP =====
@@ -163,10 +242,14 @@ void setup()
     delay(2000);
     tft.fillScreen(TFT_BLACK);
 
-    // Wi‑Fi and Blynk
-    Serial.print("Connecting to Wi‑Fi...");
+    // Wi-Fi and Blynk
+    Serial.print("Connecting to Wi-Fi...");
     Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
     Serial.println(" Connected!");
+    
+    // Send initial status to Blynk
+    sendAlertToBlynk(ALERT_NONE, "NONE");
+    
     Serial.println("Setup complete. Listening...");
 }
 
@@ -176,6 +259,18 @@ void loop()
     Blynk.run();
     updateAlert();
     updateDisplayAlert();
+
+    // Send heartbeat to Blynk every 10 seconds
+    if (millis() - lastBlynkSend > 10000)
+    {
+        if (currentAlert == ALERT_NONE && !alertsMuted)
+        {
+            // Send heartbeat only when safe and not muted
+            Blynk.virtualWrite(VIRTUAL_PIN_STATUS, "MONITORING");
+            Blynk.virtualWrite(VIRTUAL_PIN_LED_TEXT, "OK");
+        }
+        lastBlynkSend = millis();
+    }
 
     if (currentAlert != ALERT_NONE)
     {
@@ -271,6 +366,7 @@ void triggerSmokeAlert()
 {
     if (currentAlert != ALERT_NONE)
         return;
+    
     currentAlert = ALERT_SMOKE;
     alertStartTime = millis();
     alertStep = 0;
@@ -282,14 +378,20 @@ void triggerSmokeAlert()
     displayAlertStart = millis();
 
     digitalWrite(RELAY_SMOKE, HIGH);
-    Blynk.virtualWrite(VIRTUAL_PIN_NOTIFICATION, "🔥 SMOKE ALARM DETECTED! 🔥");
-    Serial.println("Blynk: Smoke alert sent");
+    
+    // Send enhanced Blynk alerts
+    String fullText = "🔥 SMOKE ALARM DETECTED! 🔥";
+    sendAlertToBlynk(ALERT_SMOKE, fullText);
+    Blynk.logEvent("smoke_alert", fullText);
+    
+    Serial.println("Blynk: Smoke alert sent - LED Text: SMOKE!");
 }
 
 void triggerDoorbellAlert()
 {
     if (currentAlert != ALERT_NONE)
         return;
+    
     currentAlert = ALERT_DOORBELL;
     alertStartTime = millis();
     alertStep = 0;
@@ -301,11 +403,16 @@ void triggerDoorbellAlert()
     displayAlertStart = millis();
 
     digitalWrite(RELAY_DOORBELL, HIGH);
-    Blynk.virtualWrite(VIRTUAL_PIN_NOTIFICATION, "🔔 Doorbell pressed! 🔔");
-    Serial.println("Blynk: Doorbell alert sent");
+    
+    // Send enhanced Blynk alerts
+    String fullText = "🔔 Doorbell pressed! 🔔";
+    sendAlertToBlynk(ALERT_DOORBELL, fullText);
+    Blynk.logEvent("doorbell_alert", fullText);
+    
+    Serial.println("Blynk: Doorbell alert sent - LED Text: DOOR!");
 }
 
-// ===== NON‑BLOCKING ALERT ANIMATION =====
+// ===== NON-BLOCKING ALERT ANIMATION =====
 void updateAlert()
 {
     if (currentAlert == ALERT_NONE)
@@ -323,6 +430,8 @@ void updateAlert()
             currentAlert = ALERT_NONE;
             fill_solid(leds, NUM_LEDS, CRGB::Black);
             FastLED.show();
+            // Send clear state to Blynk
+            sendAlertToBlynk(ALERT_NONE, "NONE");
             return;
         }
         bool on = (flashIndex % 2 == 0);
@@ -342,6 +451,8 @@ void updateAlert()
             currentAlert = ALERT_NONE;
             fill_solid(leds, NUM_LEDS, CRGB::Black);
             FastLED.show();
+            // Send clear state to Blynk
+            sendAlertToBlynk(ALERT_NONE, "NONE");
             return;
         }
         if (step < NUM_LEDS)
