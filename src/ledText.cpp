@@ -17,9 +17,9 @@
 #include <driver/i2s.h>
 
 // ===== BLYNK CONFIGURATION =====
-#define BLYNK_TEMPLATE_ID "YOUR_TEMPLATE_ID"
-#define BLYNK_TEMPLATE_NAME "Frequency Alert System"
-#define BLYNK_AUTH_TOKEN "YOUR_AUTH_TOKEN"
+#define BLYNK_TEMPLATE_ID "TMPL26PleId9c"
+#define BLYNK_TEMPLATE_NAME "LED Text"
+#define BLYNK_AUTH_TOKEN "sVOI8SxxY5HdtJzS-j2bUYnA8ycil2Ms"
 
 char ssid[] = "YOUR_WIFI_SSID";
 char pass[] = "YOUR_WIFI_PASSWORD";
@@ -48,15 +48,29 @@ arduinoFFT FFT = arduinoFFT();
 #define VOICE_FREQ_MIN 300
 #define VOICE_FREQ_MAX 3400
 
-// Alert state
-String currentAlert = "NONE";
+// Alert states
+enum AlertState {
+    STATE_SAFE,
+    STATE_SMOKE_ALARM,
+    STATE_GLASS_BREAKING,
+    STATE_HIGH_FREQ_TONE,
+    STATE_VOICE_DETECTED
+};
+
+AlertState currentAlertState = STATE_SAFE;
+AlertState lastAlertState = STATE_SAFE;
+String currentAlertText = "NONE";
 bool alertTriggered = false;
 unsigned long lastBlynkSend = 0;
+unsigned long alertStartTime = 0;
+unsigned long alertCooldownTime = 0;
 
 // ===== BLYNK VIRTUAL PINS =====
-#define VPIN_FREQUENCY V0
-#define VPIN_ALERT_TEXT V1
-#define VPIN_STATUS V2
+#define VPIN_FREQUENCY      V0
+#define VPIN_ALERT_TEXT     V1  // For Labeled Value widget
+#define VPIN_STATUS         V2  // System status
+#define VPIN_LED_TEXT       V3  // NEW: For LED Text display widget
+#define VPIN_ALERT_STATE    V4  // NEW: Numeric alert state (0-4)
 
 // ===== DISPLAY FUNCTIONS =====
 void initDisplay()
@@ -104,7 +118,19 @@ void updateDisplay(String alertText, float frequency, float amplitude)
         tft.setTextColor(TFT_RED);
         tft.println("⚠️ ALERT!");
         tft.setCursor(20, 140);
-        tft.println(alertText);
+        
+        // Word wrap for long alert texts
+        String wrappedText = alertText;
+        if (wrappedText.length() > 18) {
+            // Split into two lines if too long
+            String line1 = wrappedText.substring(0, 18);
+            String line2 = wrappedText.substring(18);
+            tft.println(line1);
+            tft.setCursor(20, 165);
+            tft.println(line2);
+        } else {
+            tft.println(wrappedText);
+        }
     }
     else
     {
@@ -188,33 +214,89 @@ float getDominantFrequency(int32_t *audioData, float *amplitudeOut)
     return frequency;
 }
 
-// ===== ALERT LOGIC =====
-String checkForAlert(float frequency, float amplitude)
+// ===== IMPROVED ALERT LOGIC =====
+AlertState checkForAlertState(float frequency, float amplitude)
 {
     if (amplitude < 50.0)
     { // Noise floor threshold
-        return "NONE";
+        return STATE_SAFE;
     }
 
     // Check for specific frequency ranges
     if (frequency > 2800 && frequency < 3200)
     {
-        return "SMOKE ALARM DETECTED";
+        return STATE_SMOKE_ALARM;
     }
     else if (frequency > 3500 && frequency < 4500)
     {
-        return "GLASS BREAKING";
+        return STATE_GLASS_BREAKING;
     }
     else if (frequency > 1800 && frequency < 2200)
     {
-        return "HIGH FREQ TONE";
+        return STATE_HIGH_FREQ_TONE;
     }
     else if (frequency >= VOICE_FREQ_MIN && frequency <= VOICE_FREQ_MAX)
     {
-        return "VOICE DETECTED";
+        return STATE_VOICE_DETECTED;
     }
 
-    return "NONE";
+    return STATE_SAFE;
+}
+
+String getAlertTextFromState(AlertState state)
+{
+    switch(state) {
+        case STATE_SMOKE_ALARM:
+            return "SMOKE ALARM DETECTED";
+        case STATE_GLASS_BREAKING:
+            return "GLASS BREAKING";
+        case STATE_HIGH_FREQ_TONE:
+            return "HIGH FREQ TONE";
+        case STATE_VOICE_DETECTED:
+            return "VOICE DETECTED";
+        case STATE_SAFE:
+        default:
+            return "NONE";
+    }
+}
+
+// Get formatted LED text for display (shorter version for LED widgets)
+String getLEDTextFromState(AlertState state)
+{
+    switch(state) {
+        case STATE_SMOKE_ALARM:
+            return "SMOKE!";
+        case STATE_GLASS_BREAKING:
+            return "GLASS!";
+        case STATE_HIGH_FREQ_TONE:
+            return "HIGH TONE!";
+        case STATE_VOICE_DETECTED:
+            return "VOICE!";
+        case STATE_SAFE:
+        default:
+            return "SAFE";
+    }
+}
+
+// Send all alert data to Blynk
+void sendAlertToBlynk(AlertState state, float frequency, String fullText)
+{
+    // Send to standard text widget (V1)
+    Blynk.virtualWrite(VPIN_ALERT_TEXT, fullText);
+    
+    // Send to LED Text widget (V3) - shorter version for LED displays
+    String ledText = getLEDTextFromState(state);
+    Blynk.virtualWrite(VPIN_LED_TEXT, ledText);
+    
+    // Send numeric state (V4) - useful for color mapping in Blynk
+    Blynk.virtualWrite(VPIN_ALERT_STATE, (int)state);
+    
+    // Send frequency data
+    Blynk.virtualWrite(VPIN_FREQUENCY, frequency);
+    
+    // Send status
+    String statusText = (state == STATE_SAFE) ? "Monitoring" : "ALERT ACTIVE";
+    Blynk.virtualWrite(VPIN_STATUS, statusText);
 }
 
 // ===== SETUP =====
@@ -232,7 +314,9 @@ void setup()
     delay(100);
 
     // Connect to Blynk
+    Serial.print("Connecting to Blynk...");
     Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+    Serial.println(" Connected!");
 
     tft.fillScreen(TFT_BLACK);
     tft.setCursor(20, 100);
@@ -241,6 +325,7 @@ void setup()
     tft.fillScreen(TFT_BLACK);
 
     Serial.println("Frequency Alert System Started");
+    Serial.println("Virtual Pins: V0=Freq, V1=AlertText, V2=Status, V3=LEDText, V4=State");
 }
 
 // ===== MAIN LOOP =====
@@ -251,48 +336,63 @@ void loop()
     int32_t audioSamples[SAMPLES];
     int samplesRead = readSamples(audioSamples, SAMPLES);
 
-    if (samplesRead == SAMPLES)
-    {
+    if (samplesRead == SAMPLES) {
         float amplitude;
         float frequency = getDominantFrequency(audioSamples, &amplitude);
 
-        String alert = checkForAlert(frequency, amplitude);
-
+        // Get current alert state
+        AlertState newAlertState = checkForAlertState(frequency, amplitude);
+        
+        // Update current state
+        currentAlertState = newAlertState;
+        currentAlertText = getAlertTextFromState(currentAlertState);
+        
+        // Check if alert state changed
+        bool stateChanged = (currentAlertState != lastAlertState);
+        
         // Update display
-        updateDisplay(alert, frequency, amplitude);
+        updateDisplay(currentAlertText, frequency, amplitude);
 
-        // Send to serial monitor
+        // Send to serial monitor with formatted output
         Serial.print("Freq: ");
         Serial.print(frequency, 0);
         Serial.print(" Hz | Amp: ");
         Serial.print(amplitude, 1);
+        Serial.print(" | State: ");
+        Serial.print(currentAlertState);
         Serial.print(" | Alert: ");
-        Serial.println(alert);
+        Serial.println(currentAlertText);
 
-        // Send to Blynk
-        Blynk.virtualWrite(VPIN_FREQUENCY, frequency);
-        Blynk.virtualWrite(VPIN_ALERT_TEXT, alert);
+        // Send ALL alert data to Blynk
+        sendAlertToBlynk(currentAlertState, frequency, currentAlertText);
 
-        // Trigger notification on new alert
-        if (alert != "NONE" && alert != currentAlert)
+        // Trigger notification ONLY on state change and if not safe
+        if (stateChanged && currentAlertState != STATE_SAFE)
         {
+            Serial.println("*** TRIGGERING ALERT NOTIFICATION ***");
             Blynk.logEvent("frequency_alert",
-                           String("Alert: ") + alert + " at " + String(frequency, 0) + " Hz");
-            currentAlert = alert;
+                           String("Alert: ") + currentAlertText + 
+                           " at " + String(frequency, 0) + " Hz");
             alertTriggered = true;
+            alertStartTime = millis();
         }
-        else if (alert == "NONE")
-        {
-            currentAlert = "NONE";
+        
+        // Reset alert flag when returning to safe state
+        if (currentAlertState == STATE_SAFE && alertTriggered) {
+            alertTriggered = false;
+            Serial.println("System returned to SAFE state");
         }
-
-        // Send heartbeat status every 10 seconds
-        if (millis() - lastBlynkSend > 10000)
+        
+        // Send heartbeat status every 10 seconds (but always send state changes immediately)
+        if (millis() - lastBlynkSend > 10000 || stateChanged)
         {
-            Blynk.virtualWrite(VPIN_STATUS,
-                               alert == "NONE" ? "Monitoring" : "ALERT ACTIVE");
+            // Force send current status
+            sendAlertToBlynk(currentAlertState, frequency, currentAlertText);
             lastBlynkSend = millis();
         }
+        
+        // Update last state
+        lastAlertState = currentAlertState;
     }
 
     delay(100);
