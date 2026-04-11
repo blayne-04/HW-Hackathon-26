@@ -10,11 +10,11 @@ char ssid[] = "YourWiFiSSID";
 char pass[] = "YourWiFiPassword";
 
 // ===== BLYNK VIRTUAL PINS =====
-#define VIRTUAL_PIN_NOTIFICATION V1  // Full alert text for notifications
-#define VIRTUAL_PIN_MUTE V2          // Mute control
-#define VIRTUAL_PIN_LED_TEXT V3      // NEW: Short LED text for display widget
-#define VIRTUAL_PIN_ALERT_STATE V4   // NEW: Numeric alert state (0=none,1=smoke,2=doorbell)
-#define VIRTUAL_PIN_STATUS V5        // NEW: System status
+#define VIRTUAL_PIN_NOTIFICATION V1 // Full alert text for notifications
+#define VIRTUAL_PIN_MUTE V2         // Mute control
+#define VIRTUAL_PIN_LED_TEXT V3     // NEW: Short LED text for display widget
+#define VIRTUAL_PIN_ALERT_STATE V4  // NEW: Numeric alert state (0=none,1=smoke,2=doorbell)
+#define VIRTUAL_PIN_STATUS V5       // NEW: System status
 
 // ===== DISPLAY =====
 TFT_eSPI tft = TFT_eSPI();
@@ -23,8 +23,8 @@ const int BAR_WIDTH = 240 / NUM_BARS;
 float barMagnitudes[NUM_BARS] = {0};
 
 // ===== I2S MIC =====
-#define I2S_WS 25
-#define I2S_SCK 26
+#define I2S_WS 26
+#define I2S_SCK 25
 #define I2S_SD 33
 
 const i2s_config_t i2s_config = {
@@ -53,14 +53,14 @@ int16_t sampleBuffer[bufferSize];
 CRGB leds[NUM_LEDS];
 
 /* ---- Relay pins ---- */
-#define RELAY_SMOKE    32
-#define RELAY_DOORBELL 27  /* GPIO27, free output-capable pin */
+#define RELAY_SMOKE 32
+#define RELAY_DOORBELL 27 /* GPIO27, free output-capable pin */
 
 /* ---- Audio + FFT working buffers ---- */
 static int16_t s_audio_buf[AUDIO_FFT_SAMPLES];
-static double  s_vReal[AUDIO_FFT_SAMPLES];
-static double  s_vImag[AUDIO_FFT_SAMPLES];
-static float   s_bar_mags[DISP_NUM_BARS];
+static double s_vReal[AUDIO_FFT_SAMPLES];
+static double s_vImag[AUDIO_FFT_SAMPLES];
+static float s_bar_mags[DISP_NUM_BARS];
 
 // ===== CLASSIFICATION THRESHOLDS =====
 const float MIN_TOTAL_ENERGY = 5000.0;
@@ -115,10 +115,10 @@ BLYNK_WRITE(VIRTUAL_PIN_MUTE)
     alertsMuted = param.asInt();
     Serial.print("Remote mute: ");
     Serial.println(alertsMuted ? "ON" : "OFF");
-    
+
     // Update status on Blynk
     Blynk.virtualWrite(VIRTUAL_PIN_STATUS, alertsMuted ? "MUTED" : "ACTIVE");
-    
+
     if (alertsMuted)
     {
         fill_solid(leds, NUM_LEDS, CRGB::DarkBlue);
@@ -128,7 +128,7 @@ BLYNK_WRITE(VIRTUAL_PIN_MUTE)
         tft.setTextColor(TFT_WHITE);
         tft.setCursor(50, 100);
         tft.println("MUTED");
-        
+
         // Send muted state to LED text widget
         Blynk.virtualWrite(VIRTUAL_PIN_LED_TEXT, "MUTED");
         Blynk.virtualWrite(VIRTUAL_PIN_ALERT_STATE, -1); // Special code for muted
@@ -144,29 +144,29 @@ BLYNK_WRITE(VIRTUAL_PIN_MUTE)
 // ===== HELPER FUNCTIONS FOR ALERT TEXT =====
 String getFullAlertTextFromState(AlertState state)
 {
-    switch(state)
+    switch (state)
     {
-        case ALERT_SMOKE:
-            return "SMOKE ALARM DETECTED";
-        case ALERT_DOORBELL:
-            return "DOORBELL PRESSED";
-        case ALERT_NONE:
-        default:
-            return "NONE";
+    case ALERT_SMOKE:
+        return "SMOKE ALARM DETECTED";
+    case ALERT_DOORBELL:
+        return "DOORBELL PRESSED";
+    case ALERT_NONE:
+    default:
+        return "NONE";
     }
 }
 
 String getLEDTextFromState(AlertState state)
 {
-    switch(state)
+    switch (state)
     {
-        case ALERT_SMOKE:
-            return "SMOKE!";
-        case ALERT_DOORBELL:
-            return "DOOR!";
-        case ALERT_NONE:
-        default:
-            return "OK";
+    case ALERT_SMOKE:
+        return "SMOKE!";
+    case ALERT_DOORBELL:
+        return "DOOR!";
+    case ALERT_NONE:
+    default:
+        return "OK";
     }
 }
 
@@ -174,14 +174,14 @@ void sendAlertToBlynk(AlertState state, String fullText)
 {
     // Send full text to notification pin
     Blynk.virtualWrite(VIRTUAL_PIN_NOTIFICATION, fullText);
-    
+
     // Send short LED text (V3) - perfect for Labeled Value widget
     String ledText = getLEDTextFromState(state);
     Blynk.virtualWrite(VIRTUAL_PIN_LED_TEXT, ledText);
-    
+
     // Send numeric state (V4) - for color mapping and gauges
     Blynk.virtualWrite(VIRTUAL_PIN_ALERT_STATE, (int)state);
-    
+
     // Send status (V5)
     String statusText;
     if (alertsMuted)
@@ -191,7 +191,7 @@ void sendAlertToBlynk(AlertState state, String fullText)
     else
         statusText = "MONITORING";
     Blynk.virtualWrite(VIRTUAL_PIN_STATUS, statusText);
-    
+
     Serial.print("Blynk Update - LED Text: ");
     Serial.print(ledText);
     Serial.print(" | State: ");
@@ -205,9 +205,9 @@ void setup()
     Serial.println("Sound Classifier starting...");
 
     /* Relay outputs */
-    pinMode(RELAY_SMOKE,    OUTPUT);
+    pinMode(RELAY_SMOKE, OUTPUT);
     pinMode(RELAY_DOORBELL, OUTPUT);
-    digitalWrite(RELAY_SMOKE,    LOW);
+    digitalWrite(RELAY_SMOKE, LOW);
     digitalWrite(RELAY_DOORBELL, LOW);
 
     /* LED strip */
@@ -238,10 +238,10 @@ void setup()
     Serial.print("Connecting to Wi-Fi...");
     Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
     Serial.println(" Connected!");
-    
+
     // Send initial status to Blynk
     sendAlertToBlynk(ALERT_NONE, "NONE");
-    
+
     Serial.println("Setup complete. Listening...");
 }
 
@@ -276,7 +276,8 @@ void loop(void)
         return;
 
     /* ---- Load FFT input buffers ---- */
-    for (int i = 0; i < AUDIO_FFT_SAMPLES; i++) {
+    for (int i = 0; i < AUDIO_FFT_SAMPLES; i++)
+    {
         s_vReal[i] = (double)s_audio_buf[i];
         s_vImag[i] = 0.0;
     }
@@ -287,25 +288,32 @@ void loop(void)
     fft_complex_to_magnitude(s_vReal, s_vImag, AUDIO_FFT_SAMPLES);
 
     /* ---- Spectral analysis ---- */
-    float total_e    = fft_total_energy(s_vReal, AUDIO_FFT_SAMPLES);
-    float doorbell_e = fft_band_energy(s_vReal, AUDIO_FFT_SAMPLES,  800.0f, 1500.0f);
-    float smoke_e    = fft_band_energy(s_vReal, AUDIO_FFT_SAMPLES, 2800.0f, 3500.0f);
+    float total_e = fft_total_energy(s_vReal, AUDIO_FFT_SAMPLES);
+    float doorbell_e = fft_band_energy(s_vReal, AUDIO_FFT_SAMPLES, 800.0f, 1500.0f);
+    float smoke_e = fft_band_energy(s_vReal, AUDIO_FFT_SAMPLES, 2800.0f, 3500.0f);
     fft_fill_bar_magnitudes(s_vReal, AUDIO_FFT_SAMPLES, s_bar_mags, DISP_NUM_BARS);
 
     /* ---- Classify and (possibly) trigger alert ---- */
     AlertState classified = fsm_classify(total_e, doorbell_e, smoke_e);
 
-    if (classified != ALERT_NONE) {
+    if (classified != ALERT_NONE)
+    {
         AlertState triggered = fsm_trigger(classified, now);
         if (triggered == classified)
             on_alert_triggered(triggered);
-    } else if (fsm_is_muted()) {
+    }
+    else if (fsm_is_muted())
+    {
         fill_solid(leds, NUM_LEDS, CRGB::DarkGray);
         FastLED.show();
-    } else if (total_e > 5000.0f) {
+    }
+    else if (total_e > 5000.0f)
+    {
         disp_draw_spectrum(s_bar_mags);
         show_loudness_bar();
-    } else {
+    }
+    else
+    {
         fill_solid(leds, NUM_LEDS, CRGB::DarkBlue);
         FastLED.show();
         disp_draw_spectrum(s_bar_mags);
@@ -317,7 +325,7 @@ void triggerSmokeAlert()
 {
     if (currentAlert != ALERT_NONE)
         return;
-    
+
     currentAlert = ALERT_SMOKE;
     alertStartTime = millis();
     alertStep = 0;
@@ -329,12 +337,12 @@ void triggerSmokeAlert()
     displayAlertStart = millis();
 
     digitalWrite(RELAY_SMOKE, HIGH);
-    
+
     // Send enhanced Blynk alerts
     String fullText = "🔥 SMOKE ALARM DETECTED! 🔥";
     sendAlertToBlynk(ALERT_SMOKE, fullText);
     Blynk.logEvent("smoke_alert", fullText);
-    
+
     Serial.println("Blynk: Smoke alert sent - LED Text: SMOKE!");
 }
 
@@ -342,7 +350,7 @@ void triggerDoorbellAlert()
 {
     if (currentAlert != ALERT_NONE)
         return;
-    
+
     currentAlert = ALERT_DOORBELL;
     alertStartTime = millis();
     alertStep = 0;
@@ -354,12 +362,12 @@ void triggerDoorbellAlert()
     displayAlertStart = millis();
 
     digitalWrite(RELAY_DOORBELL, HIGH);
-    
+
     // Send enhanced Blynk alerts
     String fullText = "🔔 Doorbell pressed! 🔔";
     sendAlertToBlynk(ALERT_DOORBELL, fullText);
     Blynk.logEvent("doorbell_alert", fullText);
-    
+
     Serial.println("Blynk: Doorbell alert sent - LED Text: DOOR!");
 }
 
