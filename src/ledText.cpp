@@ -5,9 +5,9 @@
 #include <driver/i2s.h>
 
 // ===== BLYNK CONFIGURATION =====
-#define BLYNK_TEMPLATE_ID "YOUR_TEMPLATE_ID"
-#define BLYNK_TEMPLATE_NAME "Frequency Alert System"
-#define BLYNK_AUTH_TOKEN "YOUR_AUTH_TOKEN"
+#define BLYNK_TEMPLATE_ID "TMPL26PleId9c"
+#define BLYNK_TEMPLATE_NAME "LED Text"
+#define BLYNK_AUTH_TOKEN "sVOI8SxxY5HdtJzS-j2bUYnA8ycil2Ms"
 
 char ssid[] = "YOUR_WIFI_SSID";
 char pass[] = "YOUR_WIFI_PASSWORD";

@@ -10,10 +10,9 @@
 #include <FS.h>
 #include <SPIFFS.h>
 
-// ========== BLYNK IoT ==========
-#define BLYNK_TEMPLATE_ID "YourTemplateID"    // Replace with your actual Template ID
-#define BLYNK_TEMPLATE_NAME "SoundClassifier" // Your device name
-#define BLYNK_AUTH_TOKEN "YourAuthToken"      // Your Auth Token
+#define BLYNK_TEMPLATE_ID "TMPL26PleId9c"
+#define BLYNK_TEMPLATE_NAME "LED Text"
+#define BLYNK_AUTH_TOKEN "sVOI8SxxY5HdtJzS-j2bUYnA8ycil2Ms"
 
 char ssid[] = "YourWiFiSSID";
 char pass[] = "YourWiFiPassword";
