@@ -5,9 +5,9 @@
 #include <freertos/FreeRTOS.h>
 
 /* ---- I2S pin assignments (keep in sync with Constants.h) ---- */
-#define PIN_I2S_WS   25
-#define PIN_I2S_SCK  26
-#define PIN_I2S_SD   33
+#define PIN_I2S_WS 26
+#define PIN_I2S_SCK 25
+#define PIN_I2S_SD 33
 
 /* =================================================================
  * I2S / Audio
@@ -16,25 +16,23 @@
 void audio_init(void)
 {
     i2s_config_t cfg = {
-        .mode                 = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-        .sample_rate          = AUDIO_SAMPLE_RATE,
-        .bits_per_sample      = I2S_BITS_PER_SAMPLE_16BIT,
-        .channel_format       = I2S_CHANNEL_FMT_ONLY_LEFT,
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
+        .sample_rate = AUDIO_SAMPLE_RATE,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
         .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S),
-        .intr_alloc_flags     = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count        = 8,
-        .dma_buf_len          = 256,
-        .use_apll             = false,
-        .tx_desc_auto_clear   = false,
-        .fixed_mclk           = 0
-    };
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 8,
+        .dma_buf_len = 256,
+        .use_apll = false,
+        .tx_desc_auto_clear = false,
+        .fixed_mclk = 0};
 
     i2s_pin_config_t pins = {
-        .bck_io_num   = PIN_I2S_SCK,
-        .ws_io_num    = PIN_I2S_WS,
+        .bck_io_num = PIN_I2S_SCK,
+        .ws_io_num = PIN_I2S_WS,
         .data_out_num = I2S_PIN_NO_CHANGE,
-        .data_in_num  = PIN_I2S_SD
-    };
+        .data_in_num = PIN_I2S_SD};
 
     i2s_driver_install(I2S_NUM_0, &cfg, 0, NULL);
     i2s_set_pin(I2S_NUM_0, &pins);
@@ -59,14 +57,20 @@ static void bit_reverse(double *re, double *im, int n)
     int i, j, bit;
     double tmp;
 
-    for (i = 1, j = 0; i < n; i++) {
+    for (i = 1, j = 0; i < n; i++)
+    {
         bit = n >> 1;
         for (; j & bit; bit >>= 1)
             j ^= bit;
         j ^= bit;
-        if (i < j) {
-            tmp = re[i]; re[i] = re[j]; re[j] = tmp;
-            tmp = im[i]; im[i] = im[j]; im[j] = tmp;
+        if (i < j)
+        {
+            tmp = re[i];
+            re[i] = re[j];
+            re[j] = tmp;
+            tmp = im[i];
+            im[i] = im[j];
+            im[j] = tmp;
         }
     }
 }
@@ -75,7 +79,8 @@ static void bit_reverse(double *re, double *im, int n)
 void fft_hamming_window(double *data, int n)
 {
     int i;
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < n; i++)
+    {
         double w = 0.54 - 0.46 * cos(2.0 * M_PI * i / (n - 1));
         data[i] *= w;
     }
@@ -89,15 +94,18 @@ void fft_compute(double *vReal, double *vImag, int n)
 
     bit_reverse(vReal, vImag, n);
 
-    for (len = 2; len <= n; len <<= 1) {
+    for (len = 2; len <= n; len <<= 1)
+    {
         double ang = -2.0 * M_PI / len;
         double wRe = cos(ang);
         double wIm = sin(ang);
         int half = len >> 1;
 
-        for (i = 0; i < n; i += len) {
+        for (i = 0; i < n; i += len)
+        {
             double curRe = 1.0, curIm = 0.0;
-            for (j = 0; j < half; j++) {
+            for (j = 0; j < half; j++)
+            {
                 int u = i + j;
                 int v = u + half;
                 double uRe = vReal[u], uIm = vImag[u];
@@ -121,7 +129,8 @@ void fft_compute(double *vReal, double *vImag, int n)
 void fft_complex_to_magnitude(double *vReal, double *vImag, int n)
 {
     int i;
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < n; i++)
+    {
         vReal[i] = sqrt(vReal[i] * vReal[i] + vImag[i] * vImag[i]);
         vImag[i] = 0.0;
     }
@@ -134,13 +143,15 @@ void fft_complex_to_magnitude(double *vReal, double *vImag, int n)
 float fft_dominant_frequency(const double *magnitudes, int n, float *amplitude_out)
 {
     double peak = 0.0;
-    int    peak_idx = 1;
-    int    half = n / 2;
-    int    i;
+    int peak_idx = 1;
+    int half = n / 2;
+    int i;
 
-    for (i = 1; i < half; i++) {
-        if (magnitudes[i] > peak) {
-            peak     = magnitudes[i];
+    for (i = 1; i < half; i++)
+    {
+        if (magnitudes[i] > peak)
+        {
+            peak = magnitudes[i];
             peak_idx = i;
         }
     }
@@ -154,14 +165,16 @@ float fft_dominant_frequency(const double *magnitudes, int n, float *amplitude_o
 float fft_band_energy(const double *magnitudes, int n, float freq_lo, float freq_hi)
 {
     float bin_width = (float)AUDIO_SAMPLE_RATE / (float)n;
-    int   lo_bin    = (int)(freq_lo / bin_width);
-    int   hi_bin    = (int)(freq_hi / bin_width);
-    int   half      = n / 2;
-    int   i;
-    float energy    = 0.0f;
+    int lo_bin = (int)(freq_lo / bin_width);
+    int hi_bin = (int)(freq_hi / bin_width);
+    int half = n / 2;
+    int i;
+    float energy = 0.0f;
 
-    if (lo_bin < 1)      lo_bin = 1;
-    if (hi_bin >= half)  hi_bin = half - 1;
+    if (lo_bin < 1)
+        lo_bin = 1;
+    if (hi_bin >= half)
+        hi_bin = half - 1;
 
     for (i = lo_bin; i <= hi_bin; i++)
         energy += (float)magnitudes[i];
@@ -172,8 +185,8 @@ float fft_band_energy(const double *magnitudes, int n, float freq_lo, float freq
 float fft_total_energy(const double *magnitudes, int n)
 {
     float energy = 0.0f;
-    int   half   = n / 2;
-    int   i;
+    int half = n / 2;
+    int i;
 
     for (i = 1; i < half; i++)
         energy += (float)magnitudes[i];
@@ -190,11 +203,13 @@ void fft_fill_bar_magnitudes(const double *magnitudes, int n,
     if (bins_per_bar < 1)
         bins_per_bar = 1;
 
-    for (b = 0; b < num_bars; b++) {
-        float sum  = 0.0f;
-        int   start = b * bins_per_bar;
-        int   end   = start + bins_per_bar;
-        if (end > n / 2) end = n / 2;
+    for (b = 0; b < num_bars; b++)
+    {
+        float sum = 0.0f;
+        int start = b * bins_per_bar;
+        int end = start + bins_per_bar;
+        if (end > n / 2)
+            end = n / 2;
 
         for (j = start; j < end; j++)
             sum += (float)magnitudes[j];
