@@ -1,3 +1,15 @@
+/* ledText.cpp — contents distributed to the project libraries:
+ *
+ *   I2S init / audio read  → lib/AudioProcessor/AudioProcessor.c
+ *   FFT (rewritten in C)   → lib/AudioProcessor/AudioProcessor.c
+ *   TFT display functions  → lib/DisplayManager/Disp.cpp
+ *   Alert classification   → lib/Logic/FSM.c
+ *   Blynk integration      → lib/BlynkManager/Blynk.cpp
+ *
+ * The active application entry-point is src/sound.cpp.
+ * This file is excluded from the build via platformio.ini.
+ */
+#if 0  /* entire file disabled */
 #include <Arduino.h>
 #include <BlynkSimpleEsp32.h>
 #include <TFT_eSPI.h>
@@ -285,3 +297,4 @@ void loop()
 
     delay(100);
 }
+#endif /* entire file disabled */
