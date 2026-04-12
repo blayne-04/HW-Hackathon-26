@@ -6,42 +6,69 @@ extern "C" {
 #endif
 
 #include <stdint.h>
-#include <stddef.h>
 #include "Constants.h"
 
-typedef struct
-{
-    float total_energy;
-    float energy_doorbell;
-    float energy_smoke;
-    float dominant_frequency_hz;
-    float dominant_magnitude;
+/* ----------------------------------------------------------------
+ * AudioFeatures — output of one processed frame
+ * ---------------------------------------------------------------- */
+typedef struct {
+    float total_energy;           /* sum of power across all bins          */
+    float energy_doorbell;        /* power in 800–1500 Hz band             */
+    float energy_smoke;           /* power in 2800–3500 Hz band            */
+    float dominant_frequency_hz;  /* frequency of highest-power bin        */
+    float dominant_magnitude;     /* magnitude of highest-power bin        */
 } AudioFeatures;
 
-/* ---------- Verification & Debug ---------- */
-/**
- * @brief Reads a block and prints it to Serial in a format 
- * compatible with the Arduino Serial Plotter.
- */
-void audio_test_plotter(void);
+/* ----------------------------------------------------------------
+ * Lifecycle
+ * ---------------------------------------------------------------- */
 
-/* ---------- Lifecycle & I2S ---------- */
+/* Installs the I2S driver and pre-computes the window.
+   Must be called before any other audio_* function.            */
 void audio_init(void);
 
-/**
- * @brief Reads samples, removes DC bias, and normalizes to [-1.0, 1.0].
- */
+/* ----------------------------------------------------------------
+ * Capture
+ * ---------------------------------------------------------------- */
+
+/* Read one FFT_SIZE block from the I2S mic, remove DC bias, and
+   normalize to [-1.0, 1.0].  Returns the number of samples placed
+   in output_buf (== FFT_SIZE on success, 0 on error).           */
 int audio_read_and_clean(float *output_buf, int n);
 
-/* ---------- DSP Functions ---------- */
+/* ----------------------------------------------------------------
+ * DSP
+ * ---------------------------------------------------------------- */
+
+/* Apply Blackman-Harris window + Cooley-Tukey FFT to input_samples
+   (length FFT_SIZE).  Writes FFT_BIN_COUNT magnitude values into
+   magnitudes[].                                                  */
 void audio_process_fft(const float *input_samples, float *magnitudes);
+
+/* Derive dominant frequency, total energy, and band energies from
+   the magnitude spectrum.                                        */
 void audio_extract_features(const float *magnitudes, AudioFeatures *features);
+
+/* Condense FFT_BIN_COUNT bins into bar_count averaged bars for the
+   spectrum display.                                              */
 void audio_compute_spectrum_bars(const float *magnitudes,
-                                 float *bar_magnitudes,
-                                 int bar_count);
+                                 float       *bar_magnitudes,
+                                 int          bar_count);
+
+/* ----------------------------------------------------------------
+ * Debug / Serial Plotter
+ * ---------------------------------------------------------------- */
+
+/* Capture one frame, print the waveform (128 samples) to Serial in
+   Arduino Serial Plotter format: "sample,+1.0,-1.0"             */
+void audio_print_waveform(void);
+
+/* Capture one frame, run FFT, print the top-N peaks to Serial as:
+   "freq_hz magnitude" — one line per peak, sorted by magnitude.  */
+void audio_print_spectrum(int top_n);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* AUDIO_PROCESSOR_H */

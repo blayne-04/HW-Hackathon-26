@@ -1,6 +1,7 @@
 #ifndef DISP_HPP
 #define DISP_HPP
 
+#include "Constants.h" 
 #include <TFT_eSPI.h>
 #include "FSM.h"
 

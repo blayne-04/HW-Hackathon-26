@@ -1,24 +1,40 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
-/*
- * Canonical core application configuration.
- *
- * Phase 2 focuses the firmware on:
- *   AudioProcessor -> FSM -> Display
- */
+// ===================================================================
+// TFT_eSPI configuration (replaces User_Setup.h)
+// Must be defined before <TFT_eSPI.h> is included anywhere.
+// ===================================================================
+#define USER_SETUP_LOADED
+#define GC9A01_DRIVER
+#define SPI_FREQUENCY 40000000
+
+#define LOAD_GLCD
+#define LOAD_FONT2
+#define LOAD_FONT4
+#define LOAD_FONT6
+#define LOAD_FONT7
+#define LOAD_FONT8
+#define SMOOTH_FONT
 
 // === Hardware Pinout (NodeMCU-32S) ===
 #define PIN_I2S_WS 25
 #define PIN_I2S_SCK 26
 #define PIN_I2S_SD 33
 
-#define PIN_TFT_SCLK 18
-#define PIN_TFT_MOSI 23
-#define PIN_TFT_CS 5
-#define PIN_TFT_DC 16
-#define PIN_TFT_RST 4
+#define PIN_TFT_SCLK      18
+#define PIN_TFT_MOSI      23
+#define PIN_TFT_CS         5
+#define PIN_TFT_DC        16
+#define PIN_TFT_RST        4
 #define PIN_TFT_BACKLIGHT 21
+
+// TFT_eSPI pin aliases (library reads these names)
+#define TFT_SCLK PIN_TFT_SCLK
+#define TFT_MOSI PIN_TFT_MOSI
+#define TFT_CS   PIN_TFT_CS
+#define TFT_DC   PIN_TFT_DC
+#define TFT_RST  PIN_TFT_RST
 
 // === Audio DSP Config ===
 #define SAMPLE_RATE 16000
