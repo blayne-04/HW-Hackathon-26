@@ -7,28 +7,38 @@ extern "C" {
 
 #include <stdint.h>
 #include <stddef.h>
+#include "Constants.h"
 
-#define AUDIO_SAMPLE_RATE  16000
-#define AUDIO_FFT_SAMPLES  256
+typedef enum {
+    SOUND_CLASS_SILENCE,
+    SOUND_CLASS_AMBIENT,
+    SOUND_CLASS_SMOKE_ALARM,
+    SOUND_CLASS_BABY_CRY,
+    SOUND_CLASS_DOG_BARK,
+    SOUND_CLASS_DOORBELL
+} SoundClass;
 
-/* ---------- I2S audio ---------- */
+/* ---------- Verification & Debug ---------- */
+/**
+ * @brief Reads a block and prints it to Serial in a format 
+ * compatible with the Arduino Serial Plotter.
+ */
+void audio_test_plotter(void);
+
+/* ---------- Lifecycle & I2S ---------- */
 void audio_init(void);
-int  audio_read_samples(int16_t *buf, int n);
 
-/* ---------- FFT (in-place, length n must be power of 2) ---------- */
-void fft_hamming_window(double *data, int n);
-void fft_compute(double *vReal, double *vImag, int n);
-void fft_complex_to_magnitude(double *vReal, double *vImag, int n);
+/**
+ * @brief Reads samples, removes DC bias, and normalizes to [-1.0, 1.0].
+ * Call this to get the data for your ML model.
+ */
+int audio_read_and_clean(float *output_buf, int n);
 
-/* ---------- Spectral analysis ---------- */
-float fft_dominant_frequency(const double *magnitudes, int n, float *amplitude_out);
-float fft_band_energy(const double *magnitudes, int n, float freq_lo, float freq_hi);
-float fft_total_energy(const double *magnitudes, int n);
-void  fft_fill_bar_magnitudes(const double *magnitudes, int n,
-                              float *bars, int num_bars);
+/* ---------- DSP Functions ---------- */
+void audio_process_fft(float *input_samples, float *magnitudes);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* AUDIO_PROCESSOR_H */
+#endif

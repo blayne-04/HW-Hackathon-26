@@ -6,10 +6,13 @@
 
 void setup()
 {
-
+  Serial.begin(115200);
+  audio_init(); // Initialize the "Ears"
 }
 
 void loop()
 {
- 
+ audio_test_plotter();
+  // Small delay so we don't spam the Serial port too hard
+  delay(10);
 }
