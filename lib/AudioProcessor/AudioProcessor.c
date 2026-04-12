@@ -4,6 +4,10 @@
 #include <freertos/FreeRTOS.h>
 #include "../include/Constants.h"
 
+#define AUDIO_RAW_SCRATCH_MAX 4096
+
+static int32_t s_raw_scratch[AUDIO_RAW_SCRATCH_MAX];
+
 /* =================================================================
  * I2S / Audio
  * ================================================================= */
@@ -38,14 +42,14 @@ void audio_init(void)
 
 int audio_read_samples(int16_t *buf, int n)
 {
-    // Allocate a temporary 32-bit buffer on the heap to prevent FreeRTOS stack overflow
-    int32_t *raw_buf = (int32_t *)malloc(n * sizeof(int32_t));
-    if (raw_buf == NULL) return 0;
+    if (n <= 0 || n > AUDIO_RAW_SCRATCH_MAX) {
+        return 0;
+    }
 
     size_t bytes_read = 0;
     
     // Read the raw 32-bit data from the hardware DMA
-    i2s_read(I2S_NUM_0, raw_buf, 
+    i2s_read(I2S_NUM_0, s_raw_scratch,
              (size_t)(n * sizeof(int32_t)), 
              &bytes_read, portMAX_DELAY);
              
@@ -53,10 +57,9 @@ int audio_read_samples(int16_t *buf, int n)
 
     // Shift the 32-bit data down to perfectly clean 16-bit PCM for the ML model
     for (int i = 0; i < samples_read; i++) {
-        buf[i] = (int16_t)(raw_buf[i] >> 16); 
+        buf[i] = (int16_t)(s_raw_scratch[i] >> 16);
     }
-    
-    free(raw_buf);
+
     return samples_read;
 }
 
