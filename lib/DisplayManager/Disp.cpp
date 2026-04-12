@@ -1,5 +1,4 @@
 #include "Disp.hpp"
-#include "FSM.h"
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
@@ -108,18 +107,6 @@ void disp_init(void)
     s_tft.init();
     s_tft.setRotation(2);
     s_tft.fillScreen(TFT_BLACK);
-
-    // s_tft.init();
-    // s_tft.setRotation(0);
-    // s_tft.fillScreen(TFT_BLACK);
-    // s_tft.setTextSize(2);
-    // s_tft.setTextColor(TFT_CYAN);
-    // s_tft.setCursor(20, 80);
-    // s_tft.println("Sound Classifier");
-    // s_tft.setCursor(40, 120);
-    // s_tft.println("Ready...");
-    // delay(2000);
-    // s_tft.fillScreen(TFT_BLACK);
 }
 
 void disp_hello_world(void)
