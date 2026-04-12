@@ -26,7 +26,7 @@
 
 // === Audio/FFT Config ===
 #define SAMPLE_RATE 16000
-#define FFT_SAMPLES 256
+#define FFT_SAMPLES 1024
 #define SMOKE_RATIO 0.45
 #define DOOR_RATIO 0.35
 

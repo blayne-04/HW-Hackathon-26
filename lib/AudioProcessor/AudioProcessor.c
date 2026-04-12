@@ -47,11 +47,11 @@ int audio_read_samples(int16_t *buf, int n)
  * FFT internals
  * ================================================================= */
 
-/* Bit-reversal permutation */
-static void bit_reverse(double *re, double *im, int n)
+/* Bit-reversal permutation — operates on float arrays */
+static void bit_reverse(float *re, float *im, int n)
 {
     int i, j, bit;
-    double tmp;
+    float tmp;
 
     for (i = 1, j = 0; i < n; i++)
     {
@@ -61,30 +61,38 @@ static void bit_reverse(double *re, double *im, int n)
         j ^= bit;
         if (i < j)
         {
-            tmp = re[i];
-            re[i] = re[j];
-            re[j] = tmp;
-            tmp = im[i];
-            im[i] = im[j];
-            im[j] = tmp;
+            tmp = re[i]; re[i] = re[j]; re[j] = tmp;
+            tmp = im[i]; im[i] = im[j]; im[j] = tmp;
         }
     }
 }
 
+/* Precomputed Hamming-window LUT — rebuilt only when n changes.
+ * Avoids AUDIO_FFT_SAMPLES cosf() calls every frame at run-time. */
+static float s_hamming_lut[AUDIO_FFT_SAMPLES];
+static int   s_hamming_lut_n = 0;
+
 /* Apply a Hamming window to data[] in place */
-void fft_hamming_window(double *data, int n)
+void fft_hamming_window(float *data, int n)
 {
     int i;
-    for (i = 0; i < n; i++)
+    if (n != s_hamming_lut_n)
     {
-        double w = 0.54 - 0.46 * cos(2.0 * M_PI * i / (n - 1));
-        data[i] *= w;
+        float inv = 1.0f / (float)(n - 1);
+        s_hamming_lut_n = n;
+        for (i = 0; i < n; i++)
+            s_hamming_lut[i] = 0.54f - 0.46f * cosf(2.0f * (float)M_PI * (float)i * inv);
     }
+    for (i = 0; i < n; i++)
+        data[i] *= s_hamming_lut[i];
 }
 
 /* Cooley-Tukey radix-2 DIT FFT (in-place).
-   vReal[] and vImag[] must both have length n (power of 2). */
-void fft_compute(double *vReal, double *vImag, int n)
+ * Uses float throughout — ESP32 Xtensa LX6 has a hardware single-
+ * precision FPU; double falls back to ~8x slower software emulation.
+ * Twiddle factors are computed once per stage (not in the inner loop),
+ * then propagated via incremental complex multiplication. */
+void fft_compute(float *vReal, float *vImag, int n)
 {
     int len, i, j;
 
@@ -92,28 +100,28 @@ void fft_compute(double *vReal, double *vImag, int n)
 
     for (len = 2; len <= n; len <<= 1)
     {
-        double ang = -2.0 * M_PI / len;
-        double wRe = cos(ang);
-        double wIm = sin(ang);
+        float ang = -2.0f * (float)M_PI / (float)len;
+        float wRe = cosf(ang);
+        float wIm = sinf(ang);
         int half = len >> 1;
 
         for (i = 0; i < n; i += len)
         {
-            double curRe = 1.0, curIm = 0.0;
+            float curRe = 1.0f, curIm = 0.0f;
             for (j = 0; j < half; j++)
             {
                 int u = i + j;
                 int v = u + half;
-                double uRe = vReal[u], uIm = vImag[u];
-                double tRe = vReal[v] * curRe - vImag[v] * curIm;
-                double tIm = vReal[v] * curIm + vImag[v] * curRe;
+                float uRe = vReal[u], uIm = vImag[u];
+                float tRe = vReal[v] * curRe - vImag[v] * curIm;
+                float tIm = vReal[v] * curIm + vImag[v] * curRe;
                 vReal[u] = uRe + tRe;
                 vImag[u] = uIm + tIm;
                 vReal[v] = uRe - tRe;
                 vImag[v] = uIm - tIm;
 
-                double nRe = curRe * wRe - curIm * wIm;
-                double nIm = curRe * wIm + curIm * wRe;
+                float nRe = curRe * wRe - curIm * wIm;
+                float nIm = curRe * wIm + curIm * wRe;
                 curRe = nRe;
                 curIm = nIm;
             }
@@ -121,14 +129,15 @@ void fft_compute(double *vReal, double *vImag, int n)
     }
 }
 
-/* Replace vReal[i] with |vReal[i] + j*vImag[i]|; zero vImag[]. */
-void fft_complex_to_magnitude(double *vReal, double *vImag, int n)
+/* Replace vReal[i] with |vReal[i] + j*vImag[i]|; zero vImag[].
+ * sqrtf() maps to a single-precision FPU instruction on the ESP32. */
+void fft_complex_to_magnitude(float *vReal, float *vImag, int n)
 {
     int i;
     for (i = 0; i < n; i++)
     {
-        vReal[i] = sqrt(vReal[i] * vReal[i] + vImag[i] * vImag[i]);
-        vImag[i] = 0.0;
+        vReal[i] = sqrtf(vReal[i] * vReal[i] + vImag[i] * vImag[i]);
+        vImag[i] = 0.0f;
     }
 }
 
@@ -136,9 +145,9 @@ void fft_complex_to_magnitude(double *vReal, double *vImag, int n)
  * Spectral analysis
  * ================================================================= */
 
-float fft_dominant_frequency(const double *magnitudes, int n, float *amplitude_out)
+float fft_dominant_frequency(const float *magnitudes, int n, float *amplitude_out)
 {
-    double peak = 0.0;
+    float peak = 0.0f;
     int peak_idx = 1;
     int half = n / 2;
     int i;
@@ -153,12 +162,12 @@ float fft_dominant_frequency(const double *magnitudes, int n, float *amplitude_o
     }
 
     if (amplitude_out)
-        *amplitude_out = (float)peak;
+        *amplitude_out = peak;
 
     return (float)peak_idx * ((float)AUDIO_SAMPLE_RATE / (float)n);
 }
 
-float fft_band_energy(const double *magnitudes, int n, float freq_lo, float freq_hi)
+float fft_band_energy(const float *magnitudes, int n, float freq_lo, float freq_hi)
 {
     float bin_width = (float)AUDIO_SAMPLE_RATE / (float)n;
     int lo_bin = (int)(freq_lo / bin_width);
@@ -178,7 +187,7 @@ float fft_band_energy(const double *magnitudes, int n, float freq_lo, float freq
     return energy;
 }
 
-float fft_total_energy(const double *magnitudes, int n)
+float fft_total_energy(const float *magnitudes, int n)
 {
     float energy = 0.0f;
     int half = n / 2;
@@ -190,7 +199,7 @@ float fft_total_energy(const double *magnitudes, int n)
     return energy;
 }
 
-void fft_fill_bar_magnitudes(const double *magnitudes, int n,
+void fft_fill_bar_magnitudes(const float *magnitudes, int n,
                              float *bars, int num_bars)
 {
     int bins_per_bar = (n / 2) / num_bars;
