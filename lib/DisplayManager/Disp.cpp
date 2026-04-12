@@ -1,44 +1,23 @@
 #include "Disp.hpp"
-#include "FSM.h"
 #include <Arduino.h>
 #include <stdio.h>
-#include <string.h>
+#include "Constants.h"
 
 #define SCREEN_W 240
 #define SCREEN_H 240
 #define BAR_WIDTH (SCREEN_W / DISP_NUM_BARS)
-#define ALERT_DISP_MS 3000UL
 
-#ifndef DISP_USE_FANCY_UI
-#define DISP_USE_FANCY_UI 1
-#endif
-
-#ifndef DISP_TEST_CYCLE_STATES
-#define DISP_TEST_CYCLE_STATES 1
-#endif
-
-#ifndef DISP_TEST_STEP_MS
-#define DISP_TEST_STEP_MS 3000UL
-#endif
+typedef enum
+{
+    DISP_MODE_NONE = 0,
+    DISP_MODE_MONITORING = 1,
+    DISP_MODE_ALERT = 2
+} DispMode;
 
 static TFT_eSPI s_tft;
-static bool s_showing_alert = false;
-static uint16_t s_alert_color = TFT_WHITE;
-static char s_alert_text[32] = "";
-static unsigned long s_alert_start = 0;
 static AlertState s_last_fancy_state = (AlertState)(-1);
 static uint32_t s_last_footer_sec = UINT32_MAX;
-
-static AlertState disp_test_cycle_state(uint32_t now_ms)
-{
-    uint32_t slot = (now_ms / DISP_TEST_STEP_MS) % 3UL;
-
-    if (slot == 1UL)
-        return ALERT_DOORBELL;
-    if (slot == 2UL)
-        return ALERT_SMOKE;
-    return ALERT_NONE;
-}
+static DispMode s_mode = DISP_MODE_NONE;
 
 static void disp_draw_fancy_background(void)
 {
@@ -99,6 +78,9 @@ static void disp_draw_state_icon(AlertState state, uint16_t color)
 
 void disp_init(void)
 {
+    pinMode(PIN_TFT_BACKLIGHT, OUTPUT);
+    digitalWrite(PIN_TFT_BACKLIGHT, HIGH);
+
     pinMode(TFT_RST, OUTPUT);
     digitalWrite(TFT_RST, LOW);
     delay(10);
@@ -108,20 +90,9 @@ void disp_init(void)
     s_tft.init();
     s_tft.setRotation(2);
     s_tft.fillScreen(TFT_BLACK);
-
-    // s_tft.init();
-    // s_tft.setRotation(0);
-    // s_tft.fillScreen(TFT_BLACK);
-    // s_tft.setTextSize(2);
-    // s_tft.setTextColor(TFT_CYAN);
-    // s_tft.setCursor(20, 80);
-    // s_tft.println("Sound Classifier");
-    // s_tft.setCursor(40, 120);
-    // s_tft.println("Ready...");
-    // delay(2000);
-    // s_tft.fillScreen(TFT_BLACK);
 }
 
+#if 0
 void disp_hello_world(void)
 {
     const char *msg = "HELLO WORLD";
@@ -151,8 +122,9 @@ void disp_show_state_text(AlertState state)
         break;
     }
 }
+#endif
 
-void disp_render_fancy_state(AlertState state, uint32_t now_ms)
+static void disp_render_fancy_state(AlertState state, uint32_t now_ms)
 {
     const char *label;
     uint16_t accent;
@@ -204,7 +176,7 @@ void disp_render_fancy_state(AlertState state, uint32_t now_ms)
     }
 }
 
-void disp_draw_spectrum(const float *bar_magnitudes)
+static void disp_draw_spectrum(const float *bar_magnitudes)
 {
     float max_mag = 0.0f;
     int i;
@@ -239,6 +211,7 @@ void disp_draw_spectrum(const float *bar_magnitudes)
     }
 }
 
+#if 0
 void disp_show_alert_text(const char *text, uint16_t color)
 {
     s_showing_alert = true;
@@ -253,7 +226,7 @@ void disp_update_alert_text(unsigned long now_ms)
     if (!s_showing_alert)
         return;
 
-    if (now_ms - s_alert_start >= ALERT_DISP_MS)
+    if (now_ms - s_alert_start >= DISPLAY_ALERT_DURATION_MS)
     {
         s_tft.fillScreen(TFT_BLACK);
         s_showing_alert = false;
@@ -312,12 +285,62 @@ void disp_show_muted(void)
     s_tft.setCursor(50, 100);
     s_tft.println("MUTED");
 }
+#endif
 
 void disp_clear(void)
 {
     s_tft.fillScreen(TFT_BLACK);
+    s_mode = DISP_MODE_NONE;
+    s_last_fancy_state = (AlertState)(-1);
 }
 
+void disp_render_monitoring(const float *bar_magnitudes,
+                            float dominant_frequency_hz,
+                            float total_energy)
+{
+    static const float s_empty_bars[DISP_NUM_BARS] = {0};
+    const float *bars = (bar_magnitudes != NULL) ? bar_magnitudes : s_empty_bars;
+    char line[32];
+
+    if (s_mode != DISP_MODE_MONITORING)
+    {
+        s_tft.fillScreen(TFT_BLACK);
+        s_mode = DISP_MODE_MONITORING;
+        s_last_fancy_state = (AlertState)(-1);
+        s_last_footer_sec = UINT32_MAX;
+    }
+
+    disp_draw_spectrum(bars);
+
+    s_tft.fillRect(0, 0, SCREEN_W, 74, TFT_BLACK);
+    s_tft.fillRect(0, 204, SCREEN_W, 36, TFT_BLACK);
+
+    s_tft.setTextDatum(MC_DATUM);
+    s_tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    s_tft.drawCentreString("MONITORING", SCREEN_W / 2, 14, 4);
+
+    s_tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    snprintf(line, sizeof(line), "Peak %.0f Hz", dominant_frequency_hz);
+    s_tft.drawCentreString(line, SCREEN_W / 2, 48, 2);
+
+    s_tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    snprintf(line, sizeof(line), "Energy %.0f", total_energy);
+    s_tft.drawCentreString(line, SCREEN_W / 2, 214, 2);
+}
+
+void disp_render_alert(AlertState state, uint32_t now_ms)
+{
+    if (s_mode != DISP_MODE_ALERT)
+    {
+        s_mode = DISP_MODE_ALERT;
+        s_last_fancy_state = (AlertState)(-1);
+        s_last_footer_sec = UINT32_MAX;
+    }
+
+    disp_render_fancy_state(state, now_ms);
+}
+
+#if 0
 void disp_demo_setup(void)
 {
     fsm_init();
@@ -348,3 +371,4 @@ void disp_demo_loop(uint32_t now_ms)
     disp_update_alert_text(now_ms);
 #endif
 }
+#endif

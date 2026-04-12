@@ -1,16 +1,11 @@
 #include "FSM.h"
+#include "Constants.h"
 
-/* ---- Classification thresholds (from original sound.cpp) ---- */
-#define MIN_TOTAL_ENERGY   5000.0f
-#define DOORBELL_RATIO     0.35f
-#define SMOKE_RATIO        0.45f
-#define COOLDOWN_MS        8000UL
+/* Thresholds and timing now come from Constants.h. */
 
 /* ---- Alert auto-clear durations ---- */
 /* Smoke: 10 flashes × 200 ms = 2 000 ms */
-#define SMOKE_DURATION_MS     2000UL
 /* Doorbell: NUM_LEDS * 2 steps * 20 ms = 30 * 2 * 20 = 1 200 ms */
-#define DOORBELL_DURATION_MS  1200UL
 
 /* ---- Private state ---- */
 static AlertState s_state      = ALERT_NONE;
@@ -43,11 +38,11 @@ AlertState fsm_trigger(AlertState type, uint32_t now_ms)
         return s_state;
 
     if (type == ALERT_SMOKE) {
-        if (now_ms - s_last_smoke < COOLDOWN_MS)
+        if (now_ms - s_last_smoke < ALERT_COOLDOWN_MS)
             return s_state;
         s_last_smoke = now_ms;
     } else if (type == ALERT_DOORBELL) {
-        if (now_ms - s_last_door < COOLDOWN_MS)
+        if (now_ms - s_last_door < ALERT_COOLDOWN_MS)
             return s_state;
         s_last_door = now_ms;
     } else {
@@ -68,9 +63,9 @@ AlertState fsm_update(uint32_t now_ms)
 
     elapsed = now_ms - s_start_ms;
 
-    if (s_state == ALERT_SMOKE && elapsed >= SMOKE_DURATION_MS)
+    if (s_state == ALERT_SMOKE && elapsed >= ALERT_SMOKE_DURATION_MS)
         s_state = ALERT_NONE;
-    else if (s_state == ALERT_DOORBELL && elapsed >= DOORBELL_DURATION_MS)
+    else if (s_state == ALERT_DOORBELL && elapsed >= ALERT_DOORBELL_DURATION_MS)
         s_state = ALERT_NONE;
 
     return s_state;
